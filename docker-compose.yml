@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  back:
+    build:
+      context: ./back
+    container_name: api
+    networks:
+      - matcha_network
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - 8080:8080
+    restart: on-failure
+  db:
+    image: postgres:15-alpine
+    container_name: db
+    networks:
+      - matcha_network
+    ports:
+      - ${DB_PORT}:${DB_PORT}
+    restart: on-failure
+    env_file:
+       - ./.env
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_PASSWORD=${DB_PASS}
+    volumes:
+      #- ./volumes/db:/var/lib/postgresql/data
+      - ./db/scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready --username=${DB_USER} --dbname=${DB_NAME}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  matcha_network:
+    driver: bridge

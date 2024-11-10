@@ -2,14 +2,13 @@ package org.example.database;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.sql.*;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 public class DatabaseHelper {
 
-    public static <T> int insertObject(Connection conn, String tableName, T object) throws SQLException, IllegalAccessException {
+    public static <T> boolean insertObject(Connection conn, String tableName, T object) throws SQLException, IllegalAccessException {
         Class<?> objClass = object.getClass();
         Field[] fields = Arrays.stream(objClass.getDeclaredFields())
                 .filter(f -> !f.getName().equals("id"))
@@ -37,9 +36,10 @@ public class DatabaseHelper {
                 }
             }
             stmt.executeUpdate();
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
+            ResultSet generatedKeys = stmt.getGeneratedKeys();
+            if (generatedKeys != null) {
                 if (generatedKeys.next()) {
-                    return generatedKeys.getInt(1);
+                    return true;
                 } else {
                     throw new SQLException("Creating object failed, no ID obtained.");
                 }
@@ -53,33 +53,49 @@ public class DatabaseHelper {
             }
             throw new SQLException(cause);
         }
+        return false;
     }
 
-    public static <T> T updateObject(Connection conn, String tableName, T object, String idField, String idValue) throws SQLException, IllegalAccessException {
+    public static <T> T updateObject(Connection conn, String tableName, T object, String idField, String idValue) throws SQLException {
         Class<?> objClass = object.getClass();
-        Field[] fields = Arrays.stream(objClass.getDeclaredFields())
-                .filter(f -> !f.getName().equals("id"))
-                .toArray(Field[]::new);
+        Method[] methods = objClass.getDeclaredMethods();
 
         StringBuilder columns = new StringBuilder();
-        for (int i = 0; i < fields.length; i++) {
-            fields[i].setAccessible(true);
-            columns.append("\"").append(fields[i].getName()).append("\"");
-            columns.append(" = ? ");
-            if (i < fields.length - 1) {
-                columns.append(", ");
+        List<Object> nonNullValues = new ArrayList<>();
+
+        // Iterate over methods and find getters for fields (excluding id)
+        for (Method method : methods) {
+            if (isGetter(method) && !method.getName().equalsIgnoreCase("getId")) {
+                try {
+                    Object value = method.invoke(object);
+                    // Only add non-null values to the update query
+                    if (value != null) {
+                        String fieldName = getFieldNameFromGetter(method.getName());
+                        columns.append("\"").append(fieldName).append("\" = ?, ");
+                        nonNullValues.add(value);
+                    }
+                } catch (Exception e) {
+                    throw new SQLException("Failed to access getter: " + method.getName(), e);
+                }
             }
         }
-        String sql = "UPDATE " + tableName + " SET " + columns + " WHERE \"" + idField + "\" = '" + idValue + "'";
+        // Remove the trailing comma and space
+        if (columns.length() > 0) {
+            columns.setLength(columns.length() - 2);
+        }
+        String sql = "UPDATE " + tableName + " SET " + columns + " WHERE \"" + idField + "\" = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            for (int i = 0; i < fields.length; i++) {
-                Object value = fields[i].get(object);
+            // Set values for non-null fields
+            for (int i = 0; i < nonNullValues.size(); i++) {
+                Object value = nonNullValues.get(i);
                 if (value instanceof Enum) {
                     stmt.setObject(i + 1, value.toString(), Types.VARCHAR);
                 } else {
                     stmt.setObject(i + 1, value);
                 }
             }
+            stmt.setObject(nonNullValues.size() + 1, idValue);
+
             stmt.executeUpdate();
             return object;
         } catch (Exception e) {
@@ -91,6 +107,17 @@ public class DatabaseHelper {
             }
             throw new SQLException(cause);
         }
+    }
+
+    // Utility method to check if a method is a getter
+    private static boolean isGetter(Method method) {
+        return method.getName().startsWith("get") && method.getParameterCount() == 0 && !void.class.equals(method.getReturnType());
+    }
+
+    // Utility method to get field name from a getter method
+    private static String getFieldNameFromGetter(String getterName) {
+        String fieldName = getterName.substring(3);  // Remove "get" prefix
+        return Character.toLowerCase(fieldName.charAt(0)) + fieldName.substring(1);  // Convert first letter to lowercase
     }
 
     public static <T> Set<T> getAllObjects(Connection conn, String tableName, Class<T> clazz) throws SQLException {
@@ -191,5 +218,37 @@ public class DatabaseHelper {
         return response.iterator().next();
     }
 
+    public static <T> T getObjectByFields(Connection conn, String tableName, Class<T> clazz, String[] fieldNames, String[] fieldValues) {
+        if (fieldNames.length != fieldValues.length) {
+            throw new RuntimeException("WTF Something was very wrong");
+        }
+        StringBuilder whereClause = new StringBuilder(" WHERE ");
+        for (int i = 0; i < fieldNames.length; i++) {
+            whereClause.append("\"").append(fieldNames[i]).append("\" = '").append(fieldValues[i]).append("'");
+            if (i + 1 < fieldNames.length) {
+                whereClause.append(" AND ");
+            }
+        }
 
+        String sql = "SELECT * FROM " + tableName + whereClause;
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            ResultSet queryResponse = stmt.executeQuery();
+            queryResponse.next();
+            T obj = clazz.getDeclaredConstructor().newInstance();
+            for (Field field : clazz.getDeclaredFields()) {
+                field.setAccessible(true);
+                Object value = queryResponse.getObject(field.getName());
+                if (value != null) {
+                    if (field.getType().isEnum()) {
+                        value = Enum.valueOf((Class<Enum>) field.getType(), value.toString());
+                    }
+                    field.set(obj, value);
+                }
+            }
+            return obj;
+        } catch (ReflectiveOperationException | SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
 }

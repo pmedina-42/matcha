@@ -2,35 +2,47 @@ package org.example.service.impl;
 
 import org.example.database.DatabaseConnection;
 import org.example.database.DatabaseHelper;
+import org.example.model.DTO.CreateUserResponseDTO;
+import org.example.model.entity.Block;
 import org.example.model.entity.User;
 import org.example.service.EmailService;
 import org.example.service.UserService;
 import org.example.service.utils.SearchUtils;
+import org.example.web.utils.JWTUtils;
 import org.mindrot.jbcrypt.BCrypt;
 
-import javax.mail.MessagingException;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.Iterator;
 import java.util.Set;
 import java.util.UUID;
+
+import static org.example.constants.Constants.USERS_TABLE;
+import static org.example.enums.Role.USER;
 
 public class UserServiceImpl implements UserService {
 
     EmailService emailService = new EmailServiceImpl();
 
     @Override
-    public User addUser(User user) {
+    public CreateUserResponseDTO addUser(User user) {
+        CreateUserResponseDTO userResponse = new CreateUserResponseDTO();
         try {
             Connection conn = DatabaseConnection.getConnection();
+            user.setRole(USER);
             user.setVerificationToken(UUID.randomUUID());
             user.setPassword(hashPassword(user.getPassword()));
+            DatabaseHelper.insertObject(conn, USERS_TABLE, user);
+            userResponse.setUserName(user.getUserName());
+            userResponse.setEmail(user.getEmail());
+            userResponse.setName(user.getName());
+            userResponse.setLastName(user.getLastName());
+            userResponse.setVerified(user.isVerified());
+            userResponse.setAccessToken(JWTUtils.generateToken(user.getUserName(), user.getRole()));
             //emailService.sendVerificationEmail(user);
-            DatabaseHelper.insertObject(conn, "users", user);
         } catch (SQLException | IllegalAccessException e) {
             throw new RuntimeException("Failed to add user: " + e.getMessage());
         }
-        return user;
+        return userResponse;
     }
 
     @Override
@@ -38,7 +50,7 @@ public class UserServiceImpl implements UserService {
         Set<User> users;
         try {
             Connection conn = DatabaseConnection.getConnection();
-            users = DatabaseHelper.getAllObjects(conn, "users", User.class);
+            users = DatabaseHelper.getAllObjects(conn, USERS_TABLE, User.class);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -46,10 +58,10 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Set<User> getUserByField(String fieldName, String fieldValue) {
+    public User getUserByField(String fieldName, String fieldValue) {
         try {
             Connection conn = DatabaseConnection.getConnection();
-            return DatabaseHelper.getObjectsByField(conn, "users", User.class, new String[]{fieldName}, new String[]{fieldValue});
+            return DatabaseHelper.getObjectByFields(conn, USERS_TABLE, User.class, new String[]{fieldName}, new String[]{fieldValue});
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -59,11 +71,9 @@ public class UserServiceImpl implements UserService {
     public User updateUser(User user) {
         try {
             Connection conn = DatabaseConnection.getConnection();
-            return DatabaseHelper.updateObject(conn, "users", user, "userName", user.getUserName());
+            return DatabaseHelper.updateObject(conn, USERS_TABLE, user, "userName", user.getUserName());
         } catch (SQLException e) {
             throw new RuntimeException("Failed to add user: " + e.getMessage());
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
         }
     }
 
@@ -73,7 +83,7 @@ public class UserServiceImpl implements UserService {
             Connection conn = DatabaseConnection.getConnection();
             User searchUser = new User();
             SearchUtils.defineSearchUserData(user, searchUser);
-            return DatabaseHelper.getObjectsByField(conn, "users", User.class, new String[]{"userName"}, new String[]{user.getUserName()});
+            return DatabaseHelper.getObjectsByField(conn, USERS_TABLE, User.class, new String[]{"userName"}, new String[]{user.getUserName()});
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -83,18 +93,12 @@ public class UserServiceImpl implements UserService {
     public boolean verifyUser(String userName, UUID verificationToken) {
         try {
             Connection conn = DatabaseConnection.getConnection();
-            Set<User> users = DatabaseHelper.getObjectsByField(conn, "users", User.class, new String[]{"userName"}, new String[]{userName});
-            assert users != null;
-            if (users.size() != 1) {
-                throw new RuntimeException("Wrong number of users found");
-            }
-            for (Iterator<User> it = users.iterator(); it.hasNext(); ) {
-                User user = it.next();
-                if (user.getVerificationToken().equals(verificationToken)) {
-                    user.setVerified(true);
-                    updateUser(user);
-                    return true;
-                }
+            User user = DatabaseHelper.getObjectByFields(conn, USERS_TABLE, User.class, new String[]{"userName"}, new String[]{userName});
+            assert user != null;
+            if (user.getVerificationToken().equals(verificationToken)) {
+                user.setVerified(true);
+                updateUser(user);
+                return true;
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -102,7 +106,23 @@ public class UserServiceImpl implements UserService {
         return false;
     }
 
+    @Override
+    public boolean blockUser(String blocker, String blocked) {
+        try {
+            Connection conn = DatabaseConnection.getConnection();
+            User blockerUser = DatabaseHelper.getObjectIfExists(conn, USERS_TABLE, User.class, new String[]{"userName"}, new String[]{blocker});
+            User blockedUser = DatabaseHelper.getObjectIfExists(conn, USERS_TABLE, User.class, new String[]{"userName"}, new String[]{blocker});
+            Block block = new Block();
+            block.setBlocker(blocker);
+            block.setBlocked(blocked);
+            DatabaseHelper.insertObject(conn, "blocks", block);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        return false;
+    }
+
     public String hashPassword(String password) {
-        return BCrypt.hashpw(password, BCrypt.gensalt()); // Hash the password with a generated salt
+        return BCrypt.hashpw(password, BCrypt.gensalt());
     }
 }

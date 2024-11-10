@@ -24,8 +24,8 @@ public class ReportServiceImpl implements ReportService {
             if (!reporter.equals(report.getReporter())) {
                 throw new RuntimeException("Users can only report on their name");
             }
-            if (userService.getUserByField("userName", report.getReporter()).size() != 1
-                    || userService.getUserByField("userName", report.getReported()).size() != 1) {
+            if (userService.getUserByField("userName", report.getReporter()) == null
+                    || userService.getUserByField("userName", report.getReported()) == null) {
                 throw new RuntimeException("Wrong number of users found");
             };
             report.setDate(new Timestamp(System.currentTimeMillis()));
@@ -55,7 +55,7 @@ public class ReportServiceImpl implements ReportService {
             report = DatabaseHelper.getObjectIfExists(conn, "reports", Report.class, new String[]{"id"}, new String[]{String.valueOf(report.getId())});
             report.setSolved(true);
             DatabaseHelper.updateObject(conn, "reports", report, "id", String.valueOf(report.getId()));
-        } catch (SQLException | IllegalAccessException e) {
+        } catch (SQLException e) {
             throw new RuntimeException(e);
         }
     }

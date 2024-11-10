@@ -11,6 +11,7 @@ FROM eclipse-temurin:22-jre
 WORKDIR /app
 
 COPY --from=build /app/target/*dependencies.jar /app/app.jar
+COPY ../.env /app/.env
 
 EXPOSE 8080
 

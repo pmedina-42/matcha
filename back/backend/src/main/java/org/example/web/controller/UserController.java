@@ -28,8 +28,8 @@ public class UserController {
         });
 
         get("/users/:userName", (req, res) -> {
-            Set<User> user = userService.getUserByField("userName", req.params("userName"));
-            setResponseDefaults(res, !user.isEmpty() ? 200 : 204);
+            User user = userService.getUserByField("userName", req.params("userName"));
+            setResponseDefaults(res, user != null ? 200 : 204);
             return gson.toJson(user);
         });
 

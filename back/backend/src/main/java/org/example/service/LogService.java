@@ -9,7 +9,7 @@ public interface LogService {
     /**
      * This method will be used to create LIKES or VIEWS
      * */
-    public Log createLog(Log log);
+    public Log createLog(Log log, String user);
 
     public Set<Log> getLogsByUserName(String userName, Log.Type type);
 

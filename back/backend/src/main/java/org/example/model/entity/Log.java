@@ -12,7 +12,7 @@ public class Log {
 
     private Integer id;
     private Type type;
-    private String issuing;
+    private String sender;
     private String receiver;
     private Timestamp date;
 
@@ -32,12 +32,12 @@ public class Log {
         this.type = type;
     }
 
-    public String getIssuing() {
-        return issuing;
+    public String getSender() {
+        return sender;
     }
 
-    public void setIssuing(String issuing) {
-        this.issuing = issuing;
+    public void setSender(String sender) {
+        this.sender = sender;
     }
 
     public String getReceiver() {
@@ -61,7 +61,7 @@ public class Log {
         return "Log{" +
                 "id=" + id +
                 ", type=" + type +
-                ", issuing='" + issuing + '\'' +
+                ", issuing='" + sender + '\'' +
                 ", receiver='" + receiver + '\'' +
                 ", date=" + date +
                 '}';
@@ -72,11 +72,11 @@ public class Log {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Log log = (Log) o;
-        return Objects.equals(id, log.id) && type == log.type && Objects.equals(issuing, log.issuing) && Objects.equals(receiver, log.receiver) && Objects.equals(date, log.date);
+        return Objects.equals(id, log.id) && type == log.type && Objects.equals(sender, log.sender) && Objects.equals(receiver, log.receiver) && Objects.equals(date, log.date);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, type, issuing, receiver, date);
+        return Objects.hash(id, type, sender, receiver, date);
     }
 }
